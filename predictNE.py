@@ -11,14 +11,15 @@ from tqdm import tqdm
 import platform
 import os
 from datetime import datetime
+from models.lstm import predictNE
 
 #%% load Ca and NE timecourses as np stack and convert to tensors
 
 print('Loading datasets...')
 print('\tLoading Ca data...')
-Ca = np.load('data/Ca_stack.npy')
+Ca = np.load('datasets/Ca_stack.npy')
 print('\tLoading NE data...')
-NE = np.load('data/NE_stack.npy')
+NE = np.load('datasets/NE_stack.npy')
 
 print('\tSuccessfully loaded all data!!')
 
@@ -98,29 +99,6 @@ loader_train = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
 loader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
 loader_test = DataLoader(dataset_test, batch_size=batch_size, shuffle=True)
 
-#%% initialize network
-class predictNE(nn.Module):
-    def __init__(self, input_size=12, hidden_size=64, num_layers=1):
-        super().__init__()
-        
-        # mabye RNN
-        self.rnn = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            batch_first=True
-        )
-        
-        self.fc = nn.Linear(hidden_size, 1)
-        
-    def forward(self, x):
-        # x: [batch, seq_len, 12]
-        
-        out, _ = self.rnn(x)            # out: [batch, seq_len, hidden_size]
-        out = self.fc(out)              # [batch, seq_len, 1]
-        
-        return out
-
 #%% initialize model
 
 print('Detecting available compute device...')
@@ -156,7 +134,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
 #%% train model
 
-num_epochs = 50
+num_epochs = 1
 
 print('Starting model training...')
 
@@ -292,7 +270,7 @@ print('Saving model...')
 
 # Create timestamped directory
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-save_dir = f'models/{timestamp}'
+save_dir = f'checkpoints/{timestamp}'
 os.makedirs(save_dir, exist_ok=True)
 
 # Save the model state dict
