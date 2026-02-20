@@ -2,6 +2,6 @@
 
 # module load cuda
 # cd /projectnb/devorlab/bcraus/AnalysisCode/predictNE
-# source venv_upd/bin/activate
+# source venv/bin/activate
 
 # python predictNE.py
