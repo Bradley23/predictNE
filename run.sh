@@ -1,7 +1,8 @@
 #!/bin/bash -l
 
-#$ -N lomo
+#$ -N lomo_LSTM_HbT_Ca
 #$ -j y
+#$ -o checkpoints
 #$ -l gpus=1
 #$ -l gpu_c=8.0
 

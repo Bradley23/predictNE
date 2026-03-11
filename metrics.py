@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 
-def predict_NE_from_timecourse(ca_timecourse, model, device, seq_len=300):
+def predict_NE_from_timecourse(ca_timecourse, model, device, seq_len=300, edge_index = None):
     
     N = len(ca_timecourse)
     ne_predictions = []
@@ -17,7 +17,7 @@ def predict_NE_from_timecourse(ca_timecourse, model, device, seq_len=300):
         with torch.no_grad():
             # Get first prediction
             first_seq = ca_tensor[:seq_len].unsqueeze(0)  # Add batch dimension
-            first_pred = model(first_seq).squeeze().cpu().numpy()  # Remove batch dim
+            first_pred = model(first_seq, edge_index).squeeze().cpu().numpy()  # Remove batch dim
             
             # Fill first seq_len points
             ne_predictions[i][:seq_len] = first_pred
@@ -25,7 +25,7 @@ def predict_NE_from_timecourse(ca_timecourse, model, device, seq_len=300):
             # Predict for remaining timepoints using sliding window
             for start_idx in range(1, T - seq_len + 1):
                 seq = ca_tensor[start_idx:start_idx + seq_len].unsqueeze(0)
-                pred = model(seq).squeeze().cpu().numpy()
+                pred = model(seq, edge_index).squeeze().cpu().numpy()
                 
                 # Take the last prediction (most recent timestep)
                 ne_predictions[i][start_idx + seq_len - 1] = pred[-1]

@@ -14,7 +14,7 @@ class predictNE(nn.Module):
         
         self.fc = nn.Linear(hidden_size, 1)
         
-    def forward(self, x):
+    def forward(self, x, edge_index=None):
         # x: [batch, seq_len, 12]
         
         out, _ = self.rnn(x)            # out: [batch, seq_len, hidden_size]

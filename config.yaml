@@ -1,0 +1,13 @@
+model: lstm
+
+gnn_params:
+  num_nodes: 12
+  node_features: 1
+  gat_hidden: 32
+  gat_heads: 4
+  rnn_hidden: 64
+
+lstm_params:
+  input_size: 24
+  hidden_size: 64
+  num_layers: 1

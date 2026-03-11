@@ -11,10 +11,15 @@ from tqdm import tqdm
 import platform
 import os
 from datetime import datetime
+from models import build_model
 from models.lstm import predictNE
+from models.GNN import GNN_NE, fully_connected_edge_index
 from datasets.createDataset import createDataset
 from torch.utils.data import Dataset, DataLoader
 from metrics import predict_NE_from_timecourse, corr_rmse
+import yaml
+from datasets.processing import calc_connectivity, window_clip, bpf
+from diagnostics import Report
 
 #%%
 def train(Ca_train, NE_train, Ca_val, NE_val):
@@ -24,9 +29,12 @@ def train(Ca_train, NE_train, Ca_val, NE_val):
 
     criterion = nn.MSELoss()
 
-    NUM_EPOCHS = 30
+    NUM_EPOCHS = 10
 
     LR = 1e-3
+
+    with open("config.yaml") as f:
+        config = yaml.safe_load(f)
 
     #%% ############### create datasets ###############
 
@@ -61,7 +69,10 @@ def train(Ca_train, NE_train, Ca_val, NE_val):
 
     print(f'\tUsing device: {device}')
 
-    model = predictNE().to(device)
+    model = build_model(config).to(device)
+
+    edge_index = fully_connected_edge_index(12).to(device)
+
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
     #%% ############### train model ###############
@@ -89,10 +100,14 @@ def train(Ca_train, NE_train, Ca_val, NE_val):
             
             optimizer.zero_grad()
             
-            y_pred = model(X_batch)
+            y_pred = model(X_batch, edge_index)
             
-            loss = criterion(y_pred, y_batch)
-            
+            # loss = criterion(y_pred, y_batch)
+            loss_full = criterion(y_pred, y_batch)
+            loss_final = criterion(y_pred[:, -1], y_batch[:, -1])
+
+            loss = loss_full + 2.0 * loss_final
+
             loss.backward()
             optimizer.step()
             
@@ -101,10 +116,6 @@ def train(Ca_train, NE_train, Ca_val, NE_val):
             
             # Update batch progress bar with current loss
             # batch_pbar.set_postfix({"Loss": f"{loss.item():.4f}"})
-            
-            # Clear cache every 10 batches to prevent memory buildup
-            # if batch_idx % 10 == 0 and device.type == 'cuda':
-            #     torch.cuda.empty_cache()
         
         # Calculate average training loss for this epoch
         avg_train_loss = total_loss / batch_count if batch_count > 0 else float('inf')
@@ -123,8 +134,8 @@ def train(Ca_train, NE_train, Ca_val, NE_val):
                 y_val_batch = y_val_batch.to(device, non_blocking=True)
                 
                 # Forward pass
-                y_val_pred = model(X_val_batch)
-                
+                y_val_pred = model(X_val_batch, edge_index)
+
                 val_loss = criterion(y_val_pred, y_val_batch)
                 
                 val_total_loss += val_loss.item()
@@ -163,10 +174,28 @@ if __name__ == "__main__":
     print('Loading datasets...')
     print('\tLoading Ca data...')
     Ca = np.load('datasets/Ca_stack.npy')
+    print('\tLoading HbT data...')
+    HbT = np.load('datasets/HbT_stack.npy')
     print('\tLoading NE data...')
     NE = np.load('datasets/NE_stack.npy')
 
     print('\tSuccessfully loaded all data!!')
+
+    #%% process data (optional)
+
+    window_size = 100
+    eps = 1e-6
+
+    # Ca = bpf(Ca, freq=[0, 0.5], fs=10)
+    NE = bpf(NE, freq=[0, 0.5], fs=10)
+    conn = calc_connectivity(Ca, window_size=window_size)
+    conn = np.arctanh(np.clip(conn, -1 + eps, 1 - eps)) # fisher z transform Pearson's correlation values
+    NE = window_clip(NE, window_size=window_size)
+    Ca = window_clip(Ca, window_size=window_size)
+    HbT = window_clip(HbT, window_size=window_size)
+
+    # Ca = np.concatenate((Ca, HbT), axis=2)
+    # Ca = conn
 
     #%% ############### intialize parameters ###############
 
@@ -175,7 +204,7 @@ if __name__ == "__main__":
     N = Ca.shape[0]
     torch.manual_seed(23)
     torch.cuda.manual_seed_all(23)
-    np.random.seed(23)
+    np.random.seed(24)
 
     pTrain = 0.75
     pVal = 0.15
@@ -209,12 +238,19 @@ if __name__ == "__main__":
 
     device = torch.device("cuda")
     
-    predicted_ne = predict_NE_from_timecourse(Ca_test, model, device)
+    edge_index = fully_connected_edge_index(12).to(device)
+    predicted_ne = predict_NE_from_timecourse(Ca_test, model, device, 300, edge_index)
     correlation, rmse = corr_rmse(NE_test, predicted_ne)
     
     print(f"Prediction quality:")
     print(f"  Correlation: {np.mean(correlation):.4f}")
     print(f"  RMSE: {np.mean(rmse):.4f}")
+
+    # PLOT RESULTS
+
+    report = Report('checkpoints/LSTM_report.pdf')
+    report.plot_loss(training_info['train_loss_history'], training_info['val_loss_history'])
+    report.close()
 
     # print('Saving model...')
 
